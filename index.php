@@ -3,9 +3,10 @@ require_once __DIR__ . '/auth/Auth.php';
 require_once __DIR__ . '/auth/InitializeAdmin.php';
 require_once __DIR__ . '/auth/LoginSecurity.php';
 
-// ── reCAPTCHA v2 Configuration ────────────────────────────────────────────
-define('RECAPTCHA_SITE_KEY',   '6LfS2IcsAAAAAEhuusb9xKzVw4-Iry_62kfysrLm');
-define('RECAPTCHA_SECRET_KEY', '6LfS2IcsAAAAAG9eXxEoVutLILrU9Orc3bHiS0tv');
+// ── reCAPTCHA v2 Configuration (loaded from .env) ────────────────────────
+require_once __DIR__ . '/config/Database.php';
+define('RECAPTCHA_SITE_KEY',   Database::env('RECAPTCHA_SITE_KEY'));
+define('RECAPTCHA_SECRET_KEY', Database::env('RECAPTCHA_SECRET_KEY'));
 
 /**
  * Verify reCAPTCHA token with Google's API
@@ -40,9 +41,9 @@ if (Auth::check()) {
 
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username      = trim($_POST['username'] ?? '');
-    $password      = $_POST['password'] ?? '';
-    $captchaToken  = $_POST['g-recaptcha-response'] ?? '';
+    $username     = trim($_POST['username'] ?? '');
+    $password     = $_POST['password'] ?? '';
+    $captchaToken = $_POST['g-recaptcha-response'] ?? '';
 
     // ── Verify CAPTCHA first ──────────────────────────────────────────────
     if (!verifyCaptcha($captchaToken)) {
@@ -61,7 +62,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             exit;
         } else {
-            // Failed login — show attempt info
             $attemptStats = LoginSecurity::getAttemptStats($username);
             if ($attemptStats['locked']) {
                 $error = "Account temporarily locked due to multiple failed attempts. Please try again later.";
@@ -120,12 +120,20 @@ input{width:100%;padding:11px 14px;background:#110d06;color:var(--cream);
       font-family:'DM Sans',sans-serif;margin-bottom:16px;transition:border .2s;}
 input:focus{outline:none;border-color:var(--gold);}
 
-/* reCAPTCHA wrapper — centers the widget and adds spacing */
+/* ── Password wrapper with eye toggle ── */
+.password-wrap{position:relative;margin-bottom:16px;}
+.password-wrap input{margin-bottom:0;padding-right:44px;}
+.toggle-pw{position:absolute;right:12px;top:50%;transform:translateY(-50%);
+           background:none;border:none;cursor:pointer;padding:4px;
+           color:var(--muted);transition:color .2s;line-height:1;}
+.toggle-pw:hover{color:var(--gold);}
+.toggle-pw svg{display:block;width:18px;height:18px;}
+
+/* reCAPTCHA wrapper — centers the widget and applies dark theme filter */
 .captcha-wrap{
     display:flex;
     justify-content:center;
     margin-bottom:18px;
-    /* Force the iframe to match the dark theme as best we can */
     filter: invert(0.85) hue-rotate(170deg);
 }
 
@@ -138,6 +146,11 @@ input:focus{outline:none;border-color:var(--gold);}
 
 .error{background:rgba(224,92,58,.12);border:1px solid rgba(224,92,58,.4);
        color:#e8937a;padding:10px 14px;border-radius:7px;font-size:.85rem;margin-bottom:16px;}
+
+.hint{background:rgba(201,147,58,.06);border:1px solid rgba(201,147,58,.2);
+      border-radius:8px;padding:14px;margin-top:20px;font-size:.8rem;color:var(--muted);line-height:1.8;}
+.hint strong{color:var(--gold-light);display:block;margin-bottom:4px;}
+code{background:#0e0a06;color:var(--gold);padding:1px 6px;border-radius:4px;font-size:.8rem;}
 
 @keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 .login-wrap{animation:fadeIn .4s ease}
@@ -162,7 +175,24 @@ input:focus{outline:none;border-color:var(--gold);}
       <input type="text" name="username" autofocus required autocomplete="username">
 
       <label>Password</label>
-      <input type="password" name="password" required autocomplete="current-password">
+      <div class="password-wrap">
+        <input type="password" id="passwordInput" name="password" required autocomplete="current-password">
+        <button type="button" class="toggle-pw" onclick="togglePassword()" title="Show/hide password" aria-label="Toggle password visibility">
+          <!-- Eye icon (visible when password is hidden) -->
+          <svg id="eyeIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <!-- Eye-off icon (visible when password is shown) -->
+          <svg id="eyeOffIcon" style="display:none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </button>
+      </div>
 
       <!-- Google reCAPTCHA v2 widget -->
       <div class="captcha-wrap">
@@ -173,5 +203,18 @@ input:focus{outline:none;border-color:var(--gold);}
     </form>
   </div>
 </div>
+
+<script>
+function togglePassword() {
+    const input  = document.getElementById('passwordInput');
+    const eyeOn  = document.getElementById('eyeIcon');
+    const eyeOff = document.getElementById('eyeOffIcon');
+    const showing = input.type === 'text';
+
+    input.type           = showing ? 'password' : 'text';
+    eyeOn.style.display  = showing ? 'block'    : 'none';
+    eyeOff.style.display = showing ? 'none'     : 'block';
+}
+</script>
 </body>
 </html>

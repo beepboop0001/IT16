@@ -10,7 +10,7 @@ class Database {
      * Load a value from environment variables.
      * Falls back to parsing a .env file in the project root if needed.
      */
-    private static function env(string $key, string $default = ''): string {
+    public static function env(string $key, string $default = ''): string {
         // 1. Check actual environment variables first (set by server/OS)
         $val = getenv($key);
         if ($val !== false) return $val;
