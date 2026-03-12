@@ -11,7 +11,7 @@ class InitializeAdmin {
      * 
      * Default credentials:
      * - Username: admin
-     * - Password: 123
+     * - Password: Admin@123
      * - Role: Owner
      * - First login: true (must change password)
      * 
@@ -40,12 +40,13 @@ class InitializeAdmin {
             }
             
             // Hash the default password
-            $defaultPassword = password_hash('123', PASSWORD_BCRYPT);
+            $defaultPassword = password_hash('Admin@123', PASSWORD_BCRYPT);
             
             // Create the default admin account with first_login = 1
             $insertStmt = $db->prepare("
-                INSERT INTO users (name, username, password, role_id, is_active, first_login, created_at)
-                VALUES (?, ?, ?, ?, 1, 1, NOW())
+                INSERT INTO users (name, username, password, role_id, is_active, first_login,
+                                   failed_login_attempts, lockout_until, lockout_level, created_at)
+                VALUES (?, ?, ?, ?, 1, 1, 0, NULL, 0, NOW())
             ");
             
             $result = $insertStmt->execute([
@@ -58,7 +59,7 @@ class InitializeAdmin {
             if ($result) {
                 return [
                     'success' => true,
-                    'message' => 'Default admin account created successfully. Username: admin, Password: 123'
+                    'message' => 'Default admin account created successfully. Username: admin, Password: Admin@123'
                 ];
             } else {
                 return [

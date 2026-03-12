@@ -201,6 +201,19 @@ code{background:#0e0a06;color:var(--gold);padding:1px 6px;border-radius:4px;font
 
       <button class="btn" type="submit">Sign In →</button>
     </form>
+
+    <?php
+    // Show default credentials hint whenever the auto-created admin hasn't logged in yet
+    $db2  = Database::get();
+    $chk2 = $db2->query("SELECT username FROM users WHERE username='admin' AND first_login=1 LIMIT 1")->fetch();
+    if ($chk2):
+    ?>
+    <div class="hint">
+      <strong>⚠️ Default Admin Account Active</strong>
+      Username: <code>admin</code> &nbsp;&nbsp;Password: <code>Admin@123</code><br>
+      You will be asked to set a new password after logging in.
+    </div>
+    <?php endif; ?>
   </div>
 </div>
 
