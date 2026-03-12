@@ -1,0 +1,177 @@
+<?php
+require_once __DIR__ . '/auth/Auth.php';
+require_once __DIR__ . '/auth/InitializeAdmin.php';
+require_once __DIR__ . '/auth/LoginSecurity.php';
+
+// ── reCAPTCHA v2 Configuration ────────────────────────────────────────────
+define('RECAPTCHA_SITE_KEY',   '6LfS2IcsAAAAAEhuusb9xKzVw4-Iry_62kfysrLm');
+define('RECAPTCHA_SECRET_KEY', '6LfS2IcsAAAAAG9eXxEoVutLILrU9Orc3bHiS0tv');
+
+/**
+ * Verify reCAPTCHA token with Google's API
+ */
+function verifyCaptcha(string $token): bool {
+    if (empty($token)) return false;
+
+    $response = file_get_contents('https://www.google.com/recaptcha/api/siteverify?' . http_build_query([
+        'secret'   => RECAPTCHA_SECRET_KEY,
+        'response' => $token,
+        'remoteip' => $_SERVER['REMOTE_ADDR'] ?? '',
+    ]));
+
+    if ($response === false) return false;
+
+    $data = json_decode($response, true);
+    return isset($data['success']) && $data['success'] === true;
+}
+
+// Initialize default admin account if needed
+InitializeAdmin::ensureDefaultAdmin();
+
+Auth::init();
+if (Auth::check()) {
+    if (Auth::isFirstLogin()) {
+        header('Location: /pages/change_password.php');
+    } else {
+        header('Location: /pages/dashboard.php');
+    }
+    exit;
+}
+
+$error = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $username      = trim($_POST['username'] ?? '');
+    $password      = $_POST['password'] ?? '';
+    $captchaToken  = $_POST['g-recaptcha-response'] ?? '';
+
+    // ── Verify CAPTCHA first ──────────────────────────────────────────────
+    if (!verifyCaptcha($captchaToken)) {
+        $error = 'Please complete the CAPTCHA verification.';
+    } else {
+        // ── Check if account is locked ────────────────────────────────────
+        $lockStatus = LoginSecurity::checkAccountLock($username);
+        if ($lockStatus['locked']) {
+            $error = $lockStatus['message'];
+        } elseif (Auth::login($username, $password)) {
+            $user = Auth::user();
+            if ($user && $user['first_login'] === 1) {
+                header('Location: /pages/change_password.php');
+            } else {
+                header('Location: /pages/dashboard.php');
+            }
+            exit;
+        } else {
+            // Failed login — show attempt info
+            $attemptStats = LoginSecurity::getAttemptStats($username);
+            if ($attemptStats['locked']) {
+                $error = "Account temporarily locked due to multiple failed attempts. Please try again later.";
+            } else {
+                $remaining = 5 - $attemptStats['attempts'];
+                if ($remaining > 0) {
+                    $error = "Invalid username or password. ({$remaining} attempt(s) remaining before account lockout)";
+                } else {
+                    $error = "Too many failed login attempts. Your account has been locked.";
+                }
+            }
+        }
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kusinero — Login</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<!-- Google reCAPTCHA v2 -->
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0e0a06;--surface:#1a1208;--card:#211608;
+  --gold:#c9933a;--gold-light:#e8b86d;--cream:#f5ead8;
+  --muted:#7a6448;--border:#3a2a14;--red:#e05c3a;
+}
+body{background:var(--bg);color:var(--cream);font-family:'DM Sans',sans-serif;
+     min-height:100vh;display:grid;place-items:center;
+     background-image: radial-gradient(ellipse at 20% 50%, #2a1a06 0%, transparent 60%),
+                       radial-gradient(ellipse at 80% 20%, #1e1204 0%, transparent 50%);}
+
+.login-wrap{width:100%;max-width:420px;padding:16px;}
+
+.brand{text-align:center;margin-bottom:36px;}
+.brand-icon{font-size:3rem;margin-bottom:8px;display:block;}
+.brand h1{font-family:'Playfair Display',serif;font-size:2.4rem;font-weight:900;
+           color:var(--gold-light);letter-spacing:1px;line-height:1;}
+.brand p{color:var(--muted);font-size:.85rem;margin-top:6px;letter-spacing:2px;
+          text-transform:uppercase;}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;
+      padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+
+.card h2{font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--cream);
+          margin-bottom:22px;border-bottom:1px solid var(--border);padding-bottom:14px;}
+
+label{display:block;font-size:.75rem;letter-spacing:1px;text-transform:uppercase;
+      color:var(--muted);margin-bottom:6px;}
+input{width:100%;padding:11px 14px;background:#110d06;color:var(--cream);
+      border:1px solid var(--border);border-radius:8px;font-size:.95rem;
+      font-family:'DM Sans',sans-serif;margin-bottom:16px;transition:border .2s;}
+input:focus{outline:none;border-color:var(--gold);}
+
+/* reCAPTCHA wrapper — centers the widget and adds spacing */
+.captcha-wrap{
+    display:flex;
+    justify-content:center;
+    margin-bottom:18px;
+    /* Force the iframe to match the dark theme as best we can */
+    filter: invert(0.85) hue-rotate(170deg);
+}
+
+.btn{width:100%;padding:12px;background:var(--gold);color:#0e0a06;
+     border:none;border-radius:8px;font-size:.95rem;font-weight:700;
+     font-family:'DM Sans',sans-serif;cursor:pointer;letter-spacing:.5px;
+     transition:background .2s,transform .1s;}
+.btn:hover{background:var(--gold-light);}
+.btn:active{transform:scale(.98);}
+
+.error{background:rgba(224,92,58,.12);border:1px solid rgba(224,92,58,.4);
+       color:#e8937a;padding:10px 14px;border-radius:7px;font-size:.85rem;margin-bottom:16px;}
+
+@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.login-wrap{animation:fadeIn .4s ease}
+</style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="brand">
+    <span class="brand-icon">🍽️</span>
+    <h1>Kusinero</h1>
+    <p>Restaurant Management</p>
+  </div>
+  <div class="card">
+    <h2>Login</h2>
+
+    <?php if ($error): ?>
+      <div class="error">⚠️ <?= htmlspecialchars($error) ?></div>
+    <?php endif; ?>
+
+    <form method="POST">
+      <label>Username</label>
+      <input type="text" name="username" autofocus required autocomplete="username">
+
+      <label>Password</label>
+      <input type="password" name="password" required autocomplete="current-password">
+
+      <!-- Google reCAPTCHA v2 widget -->
+      <div class="captcha-wrap">
+        <div class="g-recaptcha" data-sitekey="<?= RECAPTCHA_SITE_KEY ?>"></div>
+      </div>
+
+      <button class="btn" type="submit">Sign In →</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>
